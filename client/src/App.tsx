@@ -1,11 +1,15 @@
-import Whiteboard from "./components/Whiteboard"
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Home } from './pages/Home';
+import Canvas from './pages/Canvas';
 
-const App = () => {
+function App() {
   return (
-    <>
-    <Whiteboard/>
-    </>
-  )
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/canvas/:id" element={<Canvas/>} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
-
-export default App
+export default App; 
