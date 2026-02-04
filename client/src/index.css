@@ -1,12 +1,13 @@
 @import "tailwindcss";
 
- @font-face {
-        font-family: 'Modern'; 
-        src: url('./public/fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2') format('woff2'); 
-        font-weight: normal; 
-        font-style: normal;  
- }
+@font-face {
+  font-family: Comfort;
+  src: url(../public/fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2);
+}
+.comfort {
+  font-family: Comfort, sans-serif;
+}
 
-        body {
-        font-family: 'Modern';
-    }
+body {
+  font-family: "Comfort", sans-serif;
+}
