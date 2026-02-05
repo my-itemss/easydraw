@@ -19,10 +19,11 @@ export const Home = () => {
 
   return (
     <div 
-    className={`flex flex-row items-center justify-center h-screen text-white gap-x-5 ${
-      theme === 'dark' ? 'bg-gray-950' : 'bg-white text-black'
+    className={`flex items-center justify-center h-screen text-white ${
+      theme === 'dark' ? 'bg-black' : 'bg-white text-black'
     }`}>
-      <a
+      <div className='flex items-center justify-center gap-8'>
+         <a
         className="flex flex-col items-center justify-center cursor-pointer"
         onClick={handleStartDrawing}>
        <img src="/images/create.png" alt="Logo" className="w-30 h-30 cursor-pointer" />
@@ -34,11 +35,12 @@ export const Home = () => {
       className='cursor-pointer'
       >
        {theme === 'dark' ? (
-      <img src="/images/light.png" alt="Light Theme" className="w-30 h-30 cursor-pointer" onClick={toggleTheme} />
+      <img src="/images/bulb/off.png" alt="Light Theme" className="w-21 h-30 cursor-pointer" onClick={toggleTheme} />
        ):(
-        <img src="/images/dark.png" alt="Dark Theme" className="w-30 h-30 cursor-pointer" onClick={toggleTheme} />
+        <img src="/images/bulb/on1.png" alt="Dark Theme" className="w-21 h-30 cursor-pointer" onClick={toggleTheme} />
        )}
       </a>
+      </div>
     </div>
   );
 };
