@@ -7,13 +7,13 @@ import { joinRoom } from "./ws";
 
 const app = new Hono();
 
-/* ---------- CORS ---------- */
 app.use(
   "*",
   cors({
-    origin: "http://localhost:5173",
+    origin: ["http://localhost:5173", "https://easydraw-v1.vercel.app"],
     allowMethods: ["GET", "POST", "OPTIONS"],
     allowHeaders: ["Content-Type"],
+    credentials: true,
   })
 );
 
