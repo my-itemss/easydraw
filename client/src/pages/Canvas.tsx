@@ -98,7 +98,7 @@ const Canvas = () => {
     const url = window.location.href;
     try {
       await navigator.clipboard.writeText(url);
-      alert("Link copied to clipboard");
+      alert("Working on this share button, meanwhile link is copied to clipboard");
     } catch {
       prompt("Copy link:", url);
     }

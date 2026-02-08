@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
+
 export const Home = () => {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const navigate = useNavigate();
@@ -11,7 +12,7 @@ export const Home = () => {
 
   const handleStartDrawing = async () => {
     try {
-      const res = await fetch("http://localhost:3001/create-session", {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/create-session`, {
         method: "POST",
       });
 
