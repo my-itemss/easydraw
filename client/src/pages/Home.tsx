@@ -1,47 +1,76 @@
-import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 
 export const Home = () => {
-
-  const [theme, setTheme ] = useState('light');
-
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const navigate = useNavigate();
 
   const toggleTheme = () => {
-    setTheme(prevTheme => (prevTheme === 'dark' ? 'light' : 'dark'));
+    setTheme(t => (t === "dark" ? "light" : "dark"));
   };
 
   const handleStartDrawing = async () => {
-    const response = await fetch('http://localhost:5000/create-session', { method: 'POST' });
-    const data = await response.json();
-    navigate(data.url);
+    try {
+      const res = await fetch("http://localhost:3001/create-session", {
+        method: "POST",
+      });
+
+      if (!res.ok) throw new Error("Failed to create canvas");
+
+      const data = await res.json();
+      navigate(`/canvas/${data.id}`);
+    } catch (err) {
+      console.error(err);
+      alert("Unable to start canvas");
+    }
   };
 
   return (
-    <div 
-    className={`flex items-center justify-center h-screen text-white ${
-      theme === 'dark' ? 'bg-black' : 'bg-white text-black'
-    }`}>
-      <div className='flex items-center justify-center gap-8'>
-         <a
-        className="flex flex-col items-center justify-center cursor-pointer"
-        onClick={handleStartDrawing}>
-       <img src="/images/create.png" alt="Logo" className="w-30 h-30 cursor-pointer" />
-      </a>
-      <a>
-       <img src="/images/Docs.png" alt="Logo" className="w-26 h-26 cursor-pointer" />
-      </a>
-      <a
-      className='cursor-pointer'
-      >
-       {theme === 'dark' ? (
-      <img src="/images/bulb/off.png" alt="Light Theme" className="w-21 h-30 cursor-pointer" onClick={toggleTheme} />
-       ):(
-        <img src="/images/bulb/on1.png" alt="Dark Theme" className="w-21 h-30 cursor-pointer" onClick={toggleTheme} />
-       )}
-      </a>
+    <div
+      className={`flex items-center justify-center h-screen transition-colors ${
+        theme === "dark"
+          ? "bg-black text-white"
+          : "bg-white text-black"
+      }`}
+    >
+      <div className="flex items-center justify-center gap-10">
+
+        <button
+          onClick={handleStartDrawing}
+          className="flex flex-col items-center cursor-pointer"
+        >
+          <img
+            src="/images/create.png"
+            alt="Create canvas"
+            className="w-28 h-28"
+          />
+        </button>
+
+        <button className="cursor-pointer">
+          <img
+            src="/images/Docs.png"
+            alt="Docs"
+            className="w-24 h-24"
+          />
+        </button>
+
+        <button onClick={toggleTheme} className="cursor-pointer">
+          {theme === "dark" ? (
+            <img
+              src="/images/bulb/off.png"
+              alt="Light mode"
+              className="w-20 h-28"
+            />
+          ) : (
+            <img
+              src="/images/bulb/on1.png"
+              alt="Dark mode"
+              className="w-20 h-28"
+            />
+          )}
+        </button>
+
       </div>
     </div>
   );
 };
-

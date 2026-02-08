@@ -1,112 +1,220 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useRef, useState, useEffect } from "react";
+
+type Mode = "pen" | "eraser";
 
 const Canvas = () => {
-  const { id } = useParams<{ id: string }>(); 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+
+  const [mode, setMode] = useState<Mode>("pen");
   const [isDrawing, setIsDrawing] = useState(false);
-  const [mode, setMode] = useState<'pen' | 'eraser'>('pen');
+
+  const [penColor, setPenColor] = useState("#000000");
+  const [penSize, setPenSize] = useState(4);
+  const [eraserSize, setEraserSize] = useState(24);
+
+  const [canvasSize, setCanvasSize] = useState({
+    width: window.innerWidth * 2,
+    height: window.innerHeight * 2,
+  });
+
+  const [showEditor, setShowEditor] = useState(false);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const canvas = canvasRef.current!;
+    canvas.width = canvasSize.width;
+    canvas.height = canvasSize.height;
 
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.lineCap = 'round';
-      ctx.lineWidth = 5;
-      ctx.strokeStyle = '#000000';
-    }
+    const ctx = canvas.getContext("2d")!;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctxRef.current = ctx;
+  }, [canvasSize]);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === "e") {
+        e.preventDefault();
+        setShowEditor(v => !v);
+      }
+
+      if (e.ctrlKey && e.key === "+") {
+        setCanvasSize(s => ({
+          width: s.width + 400,
+          height: s.height + 400,
+        }));
+      }
+
+      if (e.ctrlKey && e.key === "-") {
+        setCanvasSize(s => ({
+          width: Math.max(2000, s.width - 400),
+          height: Math.max(2000, s.height - 400),
+        }));
+      }
+    };
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
-  const getCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    
-    if ('touches' in e) {
-      return {
-        x: e.touches[0].clientX - rect.left,
-        y: e.touches[0].clientY - rect.top,
-      };
-    }
+  const getPos = (e: React.MouseEvent) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
     return {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     };
   };
 
-  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
-    const ctx = canvasRef.current?.getContext('2d');
-    if (!ctx) return;
+  const startDrawing = (e: React.MouseEvent) => {
+    const ctx = ctxRef.current!;
+    const { x, y } = getPos(e);
 
-    const { x, y } = getCoordinates(e);
-    ctx.globalCompositeOperation = mode === 'pen' ? 'source-over' : 'destination-out';
     ctx.beginPath();
     ctx.moveTo(x, y);
+
+    ctx.globalCompositeOperation =
+      mode === "pen" ? "source-over" : "destination-out";
+
+    ctx.strokeStyle = penColor;
+    ctx.lineWidth = mode === "pen" ? penSize : eraserSize;
+
     setIsDrawing(true);
   };
 
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+  const draw = (e: React.MouseEvent) => {
     if (!isDrawing) return;
-    const ctx = canvasRef.current?.getContext('2d');
-    if (ctx) {
-      const { x, y } = getCoordinates(e);
-      ctx.lineTo(x, y);
-      ctx.stroke();
+    const ctx = ctxRef.current!;
+    const { x, y } = getPos(e);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+    ctxRef.current?.closePath();
+  };
+
+  const share = async () => {
+    const url = window.location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      alert("Link copied to clipboard");
+    } catch {
+      prompt("Copy link:", url);
     }
   };
 
   const download = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const link = document.createElement('a');
-    link.download = `whiteboard-${id}.png`;
-    link.href = canvas.toDataURL();
+    const link = document.createElement("a");
+    link.download = "canvas.png";
+    link.href = canvasRef.current!.toDataURL("image/png");
     link.click();
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-white">
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-2 bg-gray-800 p-2 rounded-xl shadow-2xl z-10">
-        <button 
-          onClick={() => setMode('pen')}
-          className={`px-4 py-2 rounded-lg transition ${mode === 'pen' ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-        >
-          Pen
-        </button>
-        <button 
-          onClick={() => setMode('eraser')}
-          className={`px-4 py-2 rounded-lg transition ${mode === 'eraser' ? 'bg-red-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-        >
-          Eraser
-        </button>
-        <div className="w-px h-8 bg-gray-600 mx-1" />
-        <button 
-          onClick={download}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-        >
-          Download
-        </button>
-      </div>
+    <div className="fixed inset-0 bg-gray-100 overflow-hidden">
 
-      <div className="absolute bottom-4 right-4 text-gray-400 text-xs font-mono">
-        Room ID: {id}
-      </div>
+      {/* SHARE */}
+      <button
+        onClick={share}
+        className="fixed top-4 right-4 z-30 bg-indigo-600 text-white px-4 py-2 rounded-lg shadow"
+      >
+        Share
+      </button>
+
+      {/* TOOL SETTINGS */}
+      {showEditor && (
+        <div className="fixed left-4 top-1/2 -translate-y-1/2 z-30 bg-white p-4 rounded-xl shadow w-56">
+          {mode === "pen" && (
+            <>
+              <p className="font-semibold mb-2">Pen</p>
+              <input
+                type="color"
+                value={penColor}
+                onChange={e => setPenColor(e.target.value)}
+                className="w-full mb-2"
+              />
+              <input
+                type="range"
+                min={1}
+                max={20}
+                value={penSize}
+                onChange={e => setPenSize(+e.target.value)}
+                className="w-full"
+              />
+            </>
+          )}
+
+          {mode === "eraser" && (
+            <>
+              <p className="font-semibold mb-2">Eraser</p>
+              <input
+                type="range"
+                min={10}
+                max={60}
+                value={eraserSize}
+                onChange={e => setEraserSize(+e.target.value)}
+                className="w-full"
+              />
+            </>
+          )}
+        </div>
+      )}
+
+     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-20
+                flex gap-2 bg-gray-900 px-1 py-1 
+                rounded-xl shadow-xl">
+
+  {/* PEN */}
+  <button
+    onClick={() => setMode("pen")}
+    className="p-2 rounded-xl hover:bg-gray-600 transition"
+  >
+    <img
+      src={mode === "pen" ? "/images/pen.png" : "/images/pens.png"}
+      className="w-10 h-10"
+      alt="Pen"
+    />
+  </button>
+
+  <button
+    onClick={() => setMode("eraser")}
+    className="p-2 rounded-xl hover:bg-gray-700 transition"
+  >
+    <img
+      src={mode === "eraser" ? "/images/cross.png" : "/images/eraser.png"}
+      className="w-10 h-10"
+      alt="Eraser"
+    />
+  </button>
+
+  <button
+    onClick={download}
+    className="p-2 rounded-xl hover:bg-gray-700 transition"
+  >
+    <img
+      src="/images/download.png"
+      className="w-10 h-10"
+      alt="Download"
+    />
+  </button>
+
+</div>
+
 
       <canvas
         ref={canvasRef}
         onMouseDown={startDrawing}
         onMouseMove={draw}
-        onMouseUp={() => setIsDrawing(false)}
-        onMouseLeave={() => setIsDrawing(false)}
-        onTouchStart={startDrawing}
-        onTouchMove={draw}
-        onTouchEnd={() => setIsDrawing(false)}
-        className="cursor-crosshair touch-none"
+        onMouseUp={stopDrawing}
+        onMouseLeave={stopDrawing}
+        className="absolute top-0 left-0 bg-white"
+        style={{
+          cursor:
+            mode === "pen"
+              ? 'url("/pen-cursor.png") 8 8, auto'
+              : 'url("/eraser-cursor.png") 8 8, auto',
+        }}
       />
     </div>
   );
