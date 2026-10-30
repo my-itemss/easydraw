@@ -1,78 +1,87 @@
 import { Hono } from "hono";
-import { serve } from "bun";
 import { cors } from "hono/cors";
 import crypto from "crypto";
 import { db } from "./db";
-import { joinRoom } from "./ws";
+import { wsDataFor, wsHandlers, type WsData } from "./ws";
+import { HttpError, MAX_BODY } from "./util";
+import type { AppEnv } from "./auth";
+import { authRoutes } from "./routes/auth";
+import { filesRoutes } from "./routes/files";
+import { folderRoutes } from "./routes/folders";
+import { versionRoutes } from "./routes/versions";
+import { commentRoutes } from "./routes/comments";
+import { shareRoutes, publicShareRoutes } from "./routes/share";
+import { teamRoutes } from "./routes/team";
+import { tokenRoutes } from "./routes/tokens";
+import { diagramRoutes } from "./routes/diagrams";
+import { aiRoutes } from "./routes/ai";
 
-const app = new Hono();
+export const app = new Hono<AppEnv>();
 
-app.use(
-  "*",
-  cors({
-    origin: ["http://localhost:5173", "https://easydraw-v1.vercel.app"],
-    allowMethods: ["GET", "POST", "OPTIONS"],
-    allowHeaders: ["Content-Type"],
-    credentials: true,
-  })
-);
+const origins = ["http://localhost:5173", "http://localhost:4173", "https://easydraw-v1.vercel.app", ...(process.env.CLIENT_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [])];
 
-app.get("/", c => c.json({ status: "ok" }));
+// public svg routes are embeddable from anywhere
+app.use("/api/shared/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"], allowHeaders: ["Content-Type", "Authorization"] }));
+app.use("/api/v1/diagrams/*", async (c, next) => {
+  if (c.req.method === "GET" && c.req.path.endsWith(".svg")) return cors({ origin: "*" })(c, next);
+  return cors({ origin: origins, allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allowHeaders: ["Content-Type", "Authorization"], credentials: true })(c, next);
+});
+app.use("*", cors({ origin: origins, allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allowHeaders: ["Content-Type", "Authorization"], credentials: true }));
 
-app.post("/create-session", c => {
+app.use("*", async (c, next) => {
+  const len = Number(c.req.header("content-length") ?? 0);
+  if (len > MAX_BODY + 1024) return c.json({ error: "Request body too large (max 8MB)" }, 413);
+  await next();
+});
+
+app.get("/", (c) => c.json({ status: "ok", name: "easydraw" }));
+
+// ---- legacy freehand board (original app) ----
+app.post("/create-session", (c) => {
   const id = crypto.randomBytes(4).toString("hex");
-
-  db.run(
-    "INSERT INTO canvas (id, data) VALUES (?, ?)",
-    [id, JSON.stringify([])]
-  );
-
+  db.run("INSERT INTO canvas (id, data) VALUES (?, ?)", [id, JSON.stringify([])]);
   return c.json({ id });
 });
-
-app.get("/canvas/:id", c => {
-  const id = c.req.param("id");
-
-  const row = db
-    .query("SELECT data FROM canvas WHERE id = ?")
-    .get(id) as any;
-
+app.get("/canvas/:id", (c) => {
+  const row = db.query("SELECT data FROM canvas WHERE id = ?").get(c.req.param("id")) as any;
   if (!row) return c.json({ error: "Not found" }, 404);
-
   return c.json(JSON.parse(row.data));
 });
-
-app.post("/canvas/:id", async c => {
-  const id = c.req.param("id");
+app.post("/canvas/:id", async (c) => {
   const body = await c.req.json();
-
-  db.run(
-    "UPDATE canvas SET data = ? WHERE id = ?",
-    [JSON.stringify(body), id]
-  );
-
+  db.run("UPDATE canvas SET data = ? WHERE id = ?", [JSON.stringify(body), c.req.param("id")]);
   return c.json({ success: true });
 });
 
-serve({
-  port: 3001,
+// ---- API ----
+const api = new Hono<AppEnv>();
+for (const r of [authRoutes, folderRoutes, versionRoutes, commentRoutes, shareRoutes, publicShareRoutes, teamRoutes, tokenRoutes, aiRoutes, diagramRoutes]) api.route("/", r);
+api.route("/files", filesRoutes);
+api.route("/v1/files", filesRoutes);
+app.route("/api", api);
 
-  fetch(req, server) {
+app.onError((err, c) => {
+  if (err instanceof HttpError) return c.json({ error: err.message }, err.status as any);
+  console.error(err);
+  return c.json({ error: "Internal server error" }, 500);
+});
+app.notFound((c) => c.json({ error: "Not found" }, 404));
+
+const port = Number(process.env.PORT ?? 3001);
+
+export const server = Bun.serve<WsData>({
+  port,
+  fetch(req, srv) {
     const url = new URL(req.url);
-
     if (url.pathname.startsWith("/ws/")) {
-      const canvasId = url.pathname.split("/")[2];
-      if (server.upgrade(req, { data: { canvasId } })) return;
+      const data = wsDataFor(url.pathname, url.searchParams);
+      if (!data) return new Response("Forbidden", { status: 403 });
+      if (srv.upgrade(req, { data })) return;
+      return new Response("Upgrade failed", { status: 400 });
     }
-
     return app.fetch(req);
   },
-
-  websocket: {
-    open(ws) {
-      joinRoom(ws, ws.data.canvasId);
-    },
-  },
+  websocket: wsHandlers,
 });
 
-console.log(" Backend running at http://localhost:3001");
+console.log(` easydraw backend running at http://localhost:${server.port}`);

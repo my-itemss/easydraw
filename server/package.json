@@ -5,7 +5,10 @@
   "private": true,
   "scripts": {
     "start": "bun index.ts",
-    "dev": "nodemon"
+    "dev": "nodemon",
+    "test": "bun test/smoke.ts",
+    "mcp": "bun mcp/index.ts",
+    "render": "bun cli/render.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
