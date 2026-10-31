@@ -1,7 +1,7 @@
 {
-  "name": "easydraw",
+  "name": "easydraw-client",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,11 +10,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.1.18",
+    "@fortawesome/fontawesome-svg-core": "^6.7.2",
+    "@fortawesome/free-brands-svg-icons": "^6.7.2",
+    "@fortawesome/free-regular-svg-icons": "^6.7.2",
+    "@fortawesome/free-solid-svg-icons": "^6.7.2",
+    "@fortawesome/react-fontawesome": "^0.2.2",
+    "nanoid": "^5.0.9",
+    "perfect-freehand": "^1.2.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.13.0",
-    "tailwindcss": "^4.1.18"
+    "react-icons": "^5.5.0",
+    "roughjs": "^4.6.6",
+    "zustand": "^5.0.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

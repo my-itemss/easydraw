@@ -1,30 +1,16 @@
 {
-  "name": "server",
+  "name": "easydraw-server",
   "module": "index.ts",
   "type": "module",
   "private": true,
   "scripts": {
     "start": "bun index.ts",
-    "dev": "nodemon",
-    "test": "bun test/smoke.ts",
-    "mcp": "bun mcp/index.ts",
-    "render": "bun cli/render.ts"
+    "dev": "nodemon"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@types/node": "^25.2.1",
-    "@types/ws": "^8.18.1"
+    "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "better-sqlite3": "^12.6.2",
-    "cors": "^2.8.6",
-    "crypto": "^1.0.1",
-    "express": "^5.2.1",
-    "hono": "^4.11.8",
-    "uuid": "^13.0.0",
-    "ws": "^8.19.0"
   }
 }

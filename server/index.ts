@@ -1,87 +1,93 @@
-import { Hono } from "hono";
-import { cors } from "hono/cors";
-import crypto from "crypto";
-import { db } from "./db";
-import { wsDataFor, wsHandlers, type WsData } from "./ws";
-import { HttpError, MAX_BODY } from "./util";
-import type { AppEnv } from "./auth";
-import { authRoutes } from "./routes/auth";
-import { filesRoutes } from "./routes/files";
-import { folderRoutes } from "./routes/folders";
-import { versionRoutes } from "./routes/versions";
-import { commentRoutes } from "./routes/comments";
-import { shareRoutes, publicShareRoutes } from "./routes/share";
-import { teamRoutes } from "./routes/team";
-import { tokenRoutes } from "./routes/tokens";
-import { diagramRoutes } from "./routes/diagrams";
-import { aiRoutes } from "./routes/ai";
+/**
+ * Easydraw live-collaboration relay.
+ *  - one in-memory room per id, holds the latest version of every element
+ *  - relays element updates + cursors between peers
+ * Run: bun index.ts   (PORT env, default 3001)
+ */
+import type { ServerWebSocket } from "bun";
 
-export const app = new Hono<AppEnv>();
+interface User { id: string; name: string; color: string }
+interface El { id: string; version: number; versionNonce: number; isDeleted?: boolean; [k: string]: unknown }
+interface Data { room?: string; user?: User }
+interface Room { els: Map<string, El>; sockets: Set<ServerWebSocket<Data>>; cursors: Map<string, { x: number; y: number }>; timer?: ReturnType<typeof setTimeout> }
 
-const origins = ["http://localhost:5173", "http://localhost:4173", "https://easydraw-v1.vercel.app", ...(process.env.CLIENT_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [])];
+const rooms = new Map<string, Room>();
+const MAX_ELEMENTS = 5000;
+const MAX_MESSAGE = 16 * 1024 * 1024;
 
-// public svg routes are embeddable from anywhere
-app.use("/api/shared/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"], allowHeaders: ["Content-Type", "Authorization"] }));
-app.use("/api/v1/diagrams/*", async (c, next) => {
-  if (c.req.method === "GET" && c.req.path.endsWith(".svg")) return cors({ origin: "*" })(c, next);
-  return cors({ origin: origins, allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allowHeaders: ["Content-Type", "Authorization"], credentials: true })(c, next);
-});
-app.use("*", cors({ origin: origins, allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allowHeaders: ["Content-Type", "Authorization"], credentials: true }));
+const peersOf = (r: Room) =>
+  [...r.sockets].filter((s) => s.data.user).map((s) => ({ ...s.data.user!, ...(r.cursors.get(s.data.user!.id) ?? {}) }));
 
-app.use("*", async (c, next) => {
-  const len = Number(c.req.header("content-length") ?? 0);
-  if (len > MAX_BODY + 1024) return c.json({ error: "Request body too large (max 8MB)" }, 413);
-  await next();
-});
+function broadcast(r: Room, msg: unknown, except?: ServerWebSocket<Data>) {
+  const s = JSON.stringify(msg);
+  for (const c of r.sockets) if (c !== except) c.send(s);
+}
 
-app.get("/", (c) => c.json({ status: "ok", name: "easydraw" }));
-
-// ---- legacy freehand board (original app) ----
-app.post("/create-session", (c) => {
-  const id = crypto.randomBytes(4).toString("hex");
-  db.run("INSERT INTO canvas (id, data) VALUES (?, ?)", [id, JSON.stringify([])]);
-  return c.json({ id });
-});
-app.get("/canvas/:id", (c) => {
-  const row = db.query("SELECT data FROM canvas WHERE id = ?").get(c.req.param("id")) as any;
-  if (!row) return c.json({ error: "Not found" }, 404);
-  return c.json(JSON.parse(row.data));
-});
-app.post("/canvas/:id", async (c) => {
-  const body = await c.req.json();
-  db.run("UPDATE canvas SET data = ? WHERE id = ?", [JSON.stringify(body), c.req.param("id")]);
-  return c.json({ success: true });
-});
-
-// ---- API ----
-const api = new Hono<AppEnv>();
-for (const r of [authRoutes, folderRoutes, versionRoutes, commentRoutes, shareRoutes, publicShareRoutes, teamRoutes, tokenRoutes, aiRoutes, diagramRoutes]) api.route("/", r);
-api.route("/files", filesRoutes);
-api.route("/v1/files", filesRoutes);
-app.route("/api", api);
-
-app.onError((err, c) => {
-  if (err instanceof HttpError) return c.json({ error: err.message }, err.status as any);
-  console.error(err);
-  return c.json({ error: "Internal server error" }, 500);
-});
-app.notFound((c) => c.json({ error: "Not found" }, 404));
+function merge(r: Room, incoming: El[]) {
+  for (const e of incoming) {
+    if (!e || typeof e.id !== "string") continue;
+    const cur = r.els.get(e.id);
+    if (!cur || cur.version < e.version || (cur.version === e.version && e.versionNonce < cur.versionNonce)) {
+      if (!cur && r.els.size >= MAX_ELEMENTS) continue;
+      r.els.set(e.id, e);
+    }
+  }
+}
 
 const port = Number(process.env.PORT ?? 3001);
 
-export const server = Bun.serve<WsData>({
+Bun.serve<Data>({
   port,
-  fetch(req, srv) {
+  fetch(req, server) {
     const url = new URL(req.url);
-    if (url.pathname.startsWith("/ws/")) {
-      const data = wsDataFor(url.pathname, url.searchParams);
-      if (!data) return new Response("Forbidden", { status: 403 });
-      if (srv.upgrade(req, { data })) return;
+    if (url.pathname === "/ws") {
+      if (server.upgrade(req, { data: {} })) return;
       return new Response("Upgrade failed", { status: 400 });
     }
-    return app.fetch(req);
+    return Response.json({ status: "ok", name: "easydraw", rooms: rooms.size });
   },
-  websocket: wsHandlers,
+  websocket: {
+    maxPayloadLength: MAX_MESSAGE,
+    message(ws, raw) {
+      let m: any;
+      try { m = JSON.parse(String(raw)); } catch { return; }
+      if (m.t === "join" && typeof m.room === "string" && m.user?.id) {
+        let r = rooms.get(m.room);
+        if (!r) { r = { els: new Map(), sockets: new Set(), cursors: new Map() }; rooms.set(m.room, r); }
+        if (r.timer) { clearTimeout(r.timer); r.timer = undefined; }
+        ws.data.room = m.room;
+        ws.data.user = { id: String(m.user.id), name: String(m.user.name ?? "Guest").slice(0, 32), color: String(m.user.color ?? "#6965db") };
+        r.sockets.add(ws);
+        ws.send(JSON.stringify({ t: "init", els: [...r.els.values()], peers: peersOf(r) }));
+        broadcast(r, { t: "peers", peers: peersOf(r) }, ws);
+        return;
+      }
+      const r = ws.data.room ? rooms.get(ws.data.room) : undefined;
+      if (!r || !ws.data.user) return;
+      if (m.t === "scene" && Array.isArray(m.els)) {
+        merge(r, m.els);
+        broadcast(r, { t: "scene", els: m.els }, ws);
+      } else if (m.t === "ptr") {
+        r.cursors.set(ws.data.user.id, { x: m.x, y: m.y });
+        broadcast(r, { t: "ptr", id: ws.data.user.id, x: m.x, y: m.y }, ws);
+      } else if (m.t === "name") {
+        ws.data.user.name = String(m.name ?? "Guest").slice(0, 32);
+        broadcast(r, { t: "peers", peers: peersOf(r) });
+      }
+    },
+    close(ws) {
+      const r = ws.data.room ? rooms.get(ws.data.room) : undefined;
+      if (!r) return;
+      r.sockets.delete(ws);
+      if (ws.data.user) r.cursors.delete(ws.data.user.id);
+      broadcast(r, { t: "peers", peers: peersOf(r) });
+      if (!r.sockets.size) {
+        // keep an empty room around for an hour so a refresh doesn't lose the board
+        const id = ws.data.room!;
+        r.timer = setTimeout(() => rooms.delete(id), 60 * 60 * 1000);
+      }
+    },
+  },
 });
 
-console.log(` easydraw backend running at http://localhost:${server.port}`);
+console.log(`easydraw relay listening on :${port}  (ws://localhost:${port}/ws)`);

@@ -1,7 +1,7 @@
 {
-  "watch": ["src", "index.ts","."],
+  "watch": ["index.ts"],
   "ext": "ts,json",
-  "ignore": ["node_modules",".git"],
+  "ignore": ["node_modules", ".git"],
   "exec": "bun index.ts",
   "delay": "200"
 }
